@@ -1,0 +1,4 @@
+company,careers_url,ats,ats_slug,active
+Example Company,https://example.com/careers,generic,,0
+Example Greenhouse Company,https://boards.greenhouse.io/example,greenhouse,example,0
+Example Lever Company,https://jobs.lever.co/example,lever,example,0
