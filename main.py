@@ -17,12 +17,13 @@ import os
 import re
 from dotenv import load_dotenv
 load_dotenv()
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 COMPANIES_FILE = os.path.join(ROOT, "companies.csv")
 SEEN_FILE = os.path.join(ROOT, "seen_jobs.json")
 LOG_FILE = os.path.join(ROOT, "job_log.csv")
-TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "20"))
+TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "8"))
 USER_AGENT = os.getenv("USER_AGENT", "PersonalJobAlertBot/1.0 (career-page monitoring)")
 ROLE_TERMS = [
     "data analyst", "business analyst", "power bi developer",
@@ -418,12 +419,30 @@ def main():
     candidates = []
     companies = read_companies()
     print(f"Scanning {len(companies)} active companies at {now_iso()}")
-    for row in companies:
-        try:
-            candidates.extend(scan_company(row))
-        except Exception as exc:
-            print(f"[WARN] {row.get('company')}: {exc}")
-        time.sleep(float(os.getenv("REQUEST_DELAY_SECONDS", "1")))
+    
+    max_workers = int(os.getenv("SCAN_WORKERS", "8"))
+    completed = 0
+
+    print(f"Scanning with {max_workers} concurrent workers.")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(scan_company, row): row
+            for row in companies
+        }
+
+        for future in as_completed(futures):
+            row = futures[future]
+
+            try:
+                candidates.extend(future.result())
+            except Exception as exc:
+                print(f"[WARN] {row.get('company')}: {exc}")
+
+            completed += 1
+            if completed % 50 == 0 or completed == len(companies):
+                print(f"Scan progress: {completed}/{len(companies)} companies")
+
     candidates.extend(scan_alert_emails())
 
     new_jobs = []
